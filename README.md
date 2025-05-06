@@ -7,7 +7,7 @@ This repository contains a Python script that automates the process of registeri
 1. The script uses Selenium WebDriver to control a headless Chrome browser
 2. It navigates to register2park.com and enters the required registration information
 3. The registration is set up for a 24-hour period (today to tomorrow)
-4. A screenshot is saved as a GitHub Actions artifact for verification
+4. Optionally sends an email confirmation to the provided email address
 
 ## Setup Instructions
 
@@ -23,19 +23,17 @@ You need to add the following secrets to your GitHub repository:
 2. Click "New repository secret"
 3. Add each of these secrets:
 
-| Secret Name     | Description                               |
-|-----------------|-------------------------------------------|
-| PROPERTY_CODE   | Your apartment complex's property code    |
-| FIRST_NAME      | Guest's first name                        |
-| LAST_NAME       | Guest's last name                         |
-| UNIT_NUMBER     | Your apartment unit number                |
-| PHONE           | Contact phone number                      |
-| EMAIL           | Contact email address                     |
-| VEHICLE_MAKE    | Vehicle manufacturer (e.g., Ford)         |
-| VEHICLE_MODEL   | Vehicle model (e.g., F150)                |
-| VEHICLE_COLOR   | Vehicle color                             |
-| VEHICLE_PLATE   | License plate number                      |
-| VEHICLE_STATE   | State of license plate (default: TX)      |
+| Secret Name        | Description                           |
+|--------------------|---------------------------------------|
+| PROPERTY_NAME      | Your apartment complex's name         |
+| UNIT_NUMBER        | Your apartment unit number            |
+| RESIDENT_NAME      | Resident name                         |
+| GUEST_NAME         | Guest's name                          |
+| GUEST_PHONE        | Guest's phone number                  |
+| VEHICLE_MAKE       | Vehicle manufacturer (e.g., Toyota)   |
+| VEHICLE_MODEL      | Vehicle model (e.g., Camry)           |
+| VEHICLE_PLATE      | License plate number                  |
+| NOTIFICATION_EMAIL | Email for confirmation (optional)     |
 
 ### 3. Enable GitHub Actions
 
@@ -54,38 +52,52 @@ You can also trigger the registration manually:
 
 ## Troubleshooting
 
-If the registration fails, check the GitHub Actions logs and the screenshot artifact:
+If the registration fails, check the GitHub Actions logs:
 
 1. Go to the "Actions" tab
 2. Click on the most recent workflow run
-3. Scroll down to the "Artifacts" section
-4. Download and check the "registration-screenshot" artifact
+3. Review the logs for error messages
 
 Common issues:
-- Incorrect property code
+- Missing or incorrect environment variables
 - Form layout changes on the website
 - Network connectivity issues
 
 ## Manual Local Testing
 
-To test the script manually in the terminal:
+To test the script locally in your terminal:
 
 ```bash
-# Run in visible browser mode for testing
-python register_parking.py --debug --notify
+# Create a .env file with your credentials
+# See example .env.example file
 
-# Run with email notification
+# Install dependencies
+pip install selenium python-dotenv
+
+# Run in visible browser mode for testing
+python register_parking.py --debug
+
+# Run in headless mode with email notification
 python register_parking.py --notify
+
+# Run with verbose logging for troubleshooting
+python register_parking.py --verbose
 ```
 
+## Script Features
 
+- **Headless Operation**: Runs without a visible browser when deployed
+- **Debug Mode**: Shows browser actions with `--debug` flag
+- **Email Notifications**: Sends confirmation email to the specified address
+- **Error Handling**: Robust error handling for more reliable operation
+- **Verbose Logging**: Detailed logging to help diagnose issues
 
 ## Customization
 
 You can modify the script to adjust:
-- Registration times
-- Vehicle information
-- Number of days to register
+- Registration times (in the GitHub Actions workflow file)
+- Vehicle information (through environment variables)
+- Browser behavior (in the `setup_driver` function)
 
 ## Security Note
 
