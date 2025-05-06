@@ -2,7 +2,7 @@ name: Daily Parking Registration
 
 on:
   schedule:
-    - cron: '0 17 * * *'  # Run at 12 PM CST (5 PM UTC)
+    - cron: '0 17 * * *'  # Run at 12 PM CDT / 11 AM CST (5 PM UTC)
   workflow_dispatch:  # Allow manual triggering for testing
 
 jobs:
