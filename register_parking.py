@@ -99,7 +99,7 @@ def check_element_exists(driver, selector_type, selector, timeout=5, description
         logger.info(f"Element {description} not found: {str(e)}")
         return False
 
-def register_parking(headless=True):
+def register_parking(headless=True, debug_mode=False):
     """Main function to handle the parking registration process."""
     logger.info("Starting parking registration process")
     
@@ -312,7 +312,8 @@ def register_parking(headless=True):
                 return False
         
         # Step 9: Wait for confirmation page to load
-        time.sleep(5)  # Increased wait time for confirmation page
+        logger.info("Waiting for confirmation page to load...")
+        time.sleep(8)  # Increased wait time for confirmation page
         
         # Check for confirmation message elements
         approved_msg = check_element_exists(
@@ -345,38 +346,96 @@ def register_parking(headless=True):
             
             # Handle email confirmation if requested
             if NOTIFICATION_EMAIL:
+                # Debug: log page source to understand what we're looking at
+                if debug_mode:
+                    logger.info("Current page source before email button interaction:")
+                    logger.info("=== PAGE SOURCE START ===")
+                    logger.info(driver.page_source[:500] + "...")  # Just the start
+                    logger.info("=== PAGE SOURCE END ===")
+                
+                # Wait longer for the button to be enabled
+                logger.info("Waiting for email button to be enabled...")
+                time.sleep(5)  # Give extra time for any page scripts to run
+                
                 # First check if the email button is disabled
                 try:
                     email_button = driver.find_element(By.ID, "email-confirmation")
-                    if email_button.is_enabled():
-                        logger.info("Email button is enabled, clicking it")
-                        email_button.click()
-                    else:
-                        logger.info("Email button is disabled, waiting for it to become enabled")
-                        # Wait for the button to become enabled
-                        WebDriverWait(driver, 10).until(
-                            lambda d: d.find_element(By.ID, "email-confirmation").is_enabled()
-                        )
-                        email_button.click()
                     
-                    logger.info("Clicked email confirmation button")
-                except Exception as e:
-                    logger.warning(f"Could not click email button: {e}")
-                    # Try alternative approach using JavaScript
-                    try:
+                    # Get button text and disabled state
+                    button_text = email_button.text
+                    is_disabled = email_button.get_attribute("disabled") is not None
+                    
+                    logger.info(f"Email button found: Text='{button_text}', Disabled={is_disabled}")
+                    
+                    if is_disabled:
+                        logger.info("Button is disabled, waiting for it to become enabled...")
+                        # Wait for the button to become enabled (up to 15 seconds)
+                        wait_time = 15
+                        for i in range(wait_time):
+                            is_still_disabled = email_button.get_attribute("disabled") is not None
+                            if not is_still_disabled:
+                                logger.info(f"Button became enabled after {i+1} seconds")
+                                break
+                            logger.info(f"Still disabled, waiting... ({i+1}/{wait_time})")
+                            time.sleep(1)
+                        
+                        # Refresh the element reference
+                        email_button = driver.find_element(By.ID, "email-confirmation")
+                    
+                    # Check if it's now enabled
+                    if email_button.get_attribute("disabled") is None:
+                        logger.info("Email button is now enabled, clicking it")
+                        email_button.click()
+                        logger.info("Clicked email confirmation button")
+                    else:
+                        logger.warning("Email button still disabled, trying JavaScript bypass")
                         driver.execute_script("""
                             document.getElementById('email-confirmation').removeAttribute('disabled');
                             document.getElementById('email-confirmation').click();
                         """)
-                        logger.info("Used JavaScript to click email button")
+                        logger.info("Used JavaScript to enable and click email button")
+                except Exception as e:
+                    logger.warning(f"Could not interact with email button normally: {e}")
+                    # Try alternative approach using JavaScript
+                    try:
+                        driver.execute_script("""
+                            var emailBtn = document.getElementById('email-confirmation');
+                            if(emailBtn) {
+                                emailBtn.disabled = false;
+                                emailBtn.click();
+                                console.log('Email button clicked via JavaScript');
+                            } else {
+                                console.log('Email button not found');
+                            }
+                        """)
+                        logger.info("Used JavaScript to find and click email button")
                     except Exception as e2:
-                        logger.error(f"JavaScript click also failed: {e2}")
+                        logger.error(f"JavaScript approach also failed: {e2}")
                 
-                # Check if the email popup is showing
-                time.sleep(2)
+                # Wait for modal to appear
+                logger.info("Waiting for email modal to appear...")
+                time.sleep(4)
+                
+                # Debug - log what modals might be present
+                if debug_mode:
+                    modals = driver.find_elements(By.CLASS_NAME, "modal")
+                    logger.info(f"Found {len(modals)} modal elements")
+                    for i, modal in enumerate(modals):
+                        try:
+                            modal_id = modal.get_attribute("id")
+                            is_visible = modal.is_displayed()
+                            modal_class = modal.get_attribute("class")
+                            logger.info(f"Modal {i+1}: ID={modal_id}, Visible={is_visible}, Class={modal_class}")
+                        except:
+                            logger.info(f"Modal {i+1}: [Error getting attributes]")
                 
                 # Look for the email input field in the modal
-                if check_element_exists(driver, By.ID, "emailConfirmationEmailView", description="Email field in popup"):
+                email_field_found = check_element_exists(
+                    driver, By.ID, "emailConfirmationEmailView", 
+                    timeout=5, description="Email field in popup"
+                )
+                
+                if email_field_found:
                     # Enter email address
                     email_entered = safe_send_keys(
                         driver, By.ID, "emailConfirmationEmailView", 
@@ -384,28 +443,83 @@ def register_parking(headless=True):
                     )
                     
                     if email_entered:
+                        logger.info(f"Email entered: {NOTIFICATION_EMAIL}")
+                        
                         # Click Send button
+                        logger.info("Attempting to click Send button")
                         send_clicked = safe_click(
                             driver, By.ID, "email-confirmation-send-view", 
-                            description="Send email button"
+                            timeout=5, description="Send email button"
                         )
                         
                         if send_clicked:
-                            logger.info(f"Confirmation email sent to {NOTIFICATION_EMAIL}")
+                            logger.info(f"Confirmation email send button clicked")
+                            # Wait for confirmation alert
+                            time.sleep(2)
+                            
+                            # Check for confirmation alert
+                            try:
+                                alert = driver.switch_to.alert
+                                alert_text = alert.text
+                                logger.info(f"Alert found: {alert_text}")
+                                alert.accept()
+                                logger.info("Alert accepted")
+                            except:
+                                logger.info("No JavaScript alert found - this is normal if confirmation was shown in page")
+                                
+                            logger.info("Email confirmation process completed")
                         else:
                             logger.warning("Failed to click send button")
+                            # Try with JavaScript
+                            try:
+                                driver.execute_script("""
+                                    document.getElementById('email-confirmation-send-view').click();
+                                """)
+                                logger.info("Clicked send button via JavaScript")
+                                time.sleep(2)  # Wait for the operation to complete
+                                logger.info("Email confirmation process completed via JavaScript")
+                            except Exception as e:
+                                logger.error(f"JavaScript click for send button failed: {e}")
                     else:
                         logger.warning("Failed to enter email address")
                 else:
-                    logger.warning("Email popup did not appear")
+                    logger.warning("Email popup did not appear or couldn't find the email field")
+                    
+                    # Try to get all input fields as a diagnostic
+                    try:
+                        inputs = driver.find_elements(By.TAG_NAME, "input")
+                        logger.info(f"Found {len(inputs)} input elements on page")
+                        for i, input_el in enumerate(inputs[:5]):  # Show just first 5 to avoid log spam
+                            input_id = input_el.get_attribute("id")
+                            input_type = input_el.get_attribute("type")
+                            logger.info(f"Input {i+1}: ID={input_id}, Type={input_type}")
+                    except:
+                        logger.info("Could not enumerate input fields")
+            
+            # Pause at the end if in debug mode
+            if debug_mode:
+                logger.info("DEBUG MODE: Pausing for 10 seconds at end for manual inspection")
+                time.sleep(10)
             
             return True
         else:
             logger.error("Couldn't confirm registration success")
+            
+            # In debug mode, pause to inspect
+            if debug_mode:
+                logger.info("DEBUG MODE: Registration could not be confirmed. Pausing for manual inspection.")
+                time.sleep(20)  # Longer pause for error inspection
+                
             return False
             
     except Exception as e:
         logger.error(f"Error during registration process: {str(e)}")
+        
+        # In debug mode, pause to inspect
+        if debug_mode and driver:
+            logger.info("DEBUG MODE: Error occurred. Pausing for manual inspection.")
+            time.sleep(20)  # Longer pause for error inspection
+            
         return False
     finally:
         if driver:
@@ -413,73 +527,19 @@ def register_parking(headless=True):
             driver.quit()
             logger.info("Browser closed")
 
-def send_notification_email(success, message):
-    """Send an email notification about registration status."""
-    smtp_server = os.environ.get('SMTP_SERVER')
-    smtp_port = int(os.environ.get('SMTP_PORT', 587))
-    smtp_user = os.environ.get('SMTP_USER')
-    smtp_password = os.environ.get('SMTP_PASSWORD')
-    notification_email = os.environ.get('NOTIFICATION_EMAIL')
-    
-    if not all([smtp_server, smtp_user, smtp_password, notification_email]):
-        logger.warning("Email notification settings incomplete, skipping email")
-        return
-    
-    try:
-        import smtplib
-        from email.mime.text import MIMEText
-        from email.mime.multipart import MIMEMultipart
-        
-        status = "Success" if success else "Failed"
-        subject = f"Parking Registration {status} - {datetime.now().strftime('%Y-%m-%d')}"
-        
-        msg = MIMEMultipart()
-        msg['From'] = smtp_user
-        msg['To'] = notification_email
-        msg['Subject'] = subject
-        
-        body = f"""
-        Parking Registration {status}
-        
-        Date: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
-        Message: {message}
-        
-        Property: {PROPERTY_NAME}
-        Unit: {UNIT_NUMBER}
-        Guest: {GUEST_NAME}
-        Vehicle: {VEHICLE_MAKE} {VEHICLE_MODEL}
-        License: {VEHICLE_PLATE}
-        """
-        
-        msg.attach(MIMEText(body, 'plain'))
-        
-        server = smtplib.SMTP(smtp_server, smtp_port)
-        server.starttls()
-        server.login(smtp_user, smtp_password)
-        server.send_message(msg)
-        server.quit()
-        
-        logger.info(f"Notification email sent to {notification_email}")
-    except Exception as e:
-        logger.error(f"Failed to send notification email: {str(e)}")
-
 if __name__ == "__main__":
     # Parse command line arguments
     parser = argparse.ArgumentParser(description='Register parking on Register2Park')
     parser.add_argument('--debug', action='store_true', help='Run in debug mode (visible browser)')
-    parser.add_argument('--notify', action='store_true', help='Send email notification')
+    parser.add_argument('--verbose', action='store_true', help='Enable verbose logging and pauses')
     args = parser.parse_args()
     
     # Check if running in debug mode
     debug_mode = args.debug or os.environ.get('DEBUG_MODE', 'false').lower() == 'true'
+    verbose_mode = args.verbose or os.environ.get('VERBOSE_MODE', 'false').lower() == 'true'
     
     # Run the registration process
-    success = register_parking(headless=not debug_mode)
-    
-    # Send notification if requested
-    if args.notify:
-        message = "Registration completed successfully" if success else "Registration failed"
-        send_notification_email(success, message)
+    success = register_parking(headless=not debug_mode, debug_mode=verbose_mode)
     
     # Exit with appropriate code
     exit(0 if success else 1)
